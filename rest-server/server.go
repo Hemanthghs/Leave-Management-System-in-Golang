@@ -28,6 +28,11 @@ type leave_item struct {
 	Status string `json:"status"`
 }
 
+type leave_approve struct {
+	LeaveId int32  `json:"leaveId"`
+	Status  string `json:"status"`
+}
+
 func handleError(err error) {
 	if err != nil {
 		log.Fatal(err)
@@ -54,6 +59,7 @@ func connectToDB() {
 	leave_collection = client.Database("lms").Collection("leaves")
 }
 
+// this function is used to add new student, admin can add the students
 func addStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var student student_item
@@ -74,6 +80,7 @@ func addStudent(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Student details added"))
 }
 
+// this function is request the leave, student can use this function
 func leaveRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var leave leave_item
@@ -94,6 +101,37 @@ func leaveRequest(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Leave request sent successfully"))
 }
 
+// this function is used to list all the leaves, admin can use this
+func viewLeaves(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var leaves []leave_item
+	cursor, err := leave_collection.Find(context.TODO(), bson.D{{}})
+	handleError(err)
+	cursor.All(context.Background(), &leaves)
+	fmt.Println(leaves)
+	for _, val := range leaves {
+		s := fmt.Sprintf("%s %d %s %s %s\n", val.Name, val.Id, val.Reason, val.Date, val.Status)
+		w.Write([]byte(s))
+	}
+}
+
+// this function is used to accept or reject a leave, the admin can provide the leaveId and the status
+func approveLeave(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var leaveApprove leave_approve
+	json.NewDecoder(r.Body).Decode(&leaveApprove)
+	filter := bson.M{
+		"leaveId": leaveApprove.LeaveId,
+	}
+
+	update := bson.D{{"$set", bson.D{{"status", leaveApprove.Status}}}}
+	_, err := leave_collection.UpdateOne(context.TODO(), filter, update)
+	handleError(err)
+	w.Write([]byte("Status updated"))
+
+}
+
+// this function is used to check the status of the leave, student can use this
 func checkStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var student student_item
@@ -113,11 +151,14 @@ func checkStatus(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(result))
 }
 
+// this function is used to initialize the routes
 func initializeRouter() {
 	r := mux.NewRouter()
 	r.HandleFunc("/addstudent", addStudent).Methods("POST")
 	r.HandleFunc("/leaverequest", leaveRequest).Methods("POST")
 	r.HandleFunc("/checkstatus", checkStatus).Methods("POST")
+	r.HandleFunc("/viewleaves", viewLeaves).Methods("GET")
+	r.HandleFunc("/approveleave", approveLeave).Methods("POST")
 	log.Fatal(http.ListenAndServe("0.0.0.0:10000", r))
 }
 
